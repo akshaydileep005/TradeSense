@@ -43,6 +43,10 @@ async def lifespan(app: FastAPI):
     # Shutdown
     if ticker_task:
         ticker_task.cancel()
+        try:
+            await ticker_task
+        except (asyncio.CancelledError, Exception):
+            pass
     await engine.dispose()
 
 app = FastAPI(
@@ -71,11 +75,21 @@ app.include_router(alerts.router, prefix=settings.API_V1_STR)
 app.include_router(leaderboard.router, prefix=settings.API_V1_STR)
 app.include_router(ws.router)
 
+@app.get("/")
+async def root_health():
+    return {
+        "status": "healthy",
+        "service": settings.PROJECT_NAME,
+        "version": settings.VERSION,
+        "markets": list(settings.MARKETS.keys())
+    }
+
 @app.get("/health")
 async def health_check():
     return {
         "status": "healthy",
-        "service": "TradeSense API",
+        "service": settings.PROJECT_NAME,
+        "version": settings.VERSION,
         "markets": list(settings.MARKETS.keys())
     }
 

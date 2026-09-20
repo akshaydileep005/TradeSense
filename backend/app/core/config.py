@@ -21,6 +21,8 @@ class Settings:
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
     
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./tradesense.db")
+    REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    TWELVE_DATA_API_KEY: str = os.getenv("TWELVE_DATA_API_KEY", "")
     
     MARKETS: Dict[str, MarketConfig] = {
         "nse": MarketConfig(

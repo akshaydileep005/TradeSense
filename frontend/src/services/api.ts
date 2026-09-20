@@ -1,6 +1,16 @@
 // API client service for TradeSense
-const API_BASE = "http://localhost:8000/api";
-const WS_BASE = "ws://localhost:8000/ws/prices";
+const isBrowser = typeof window !== "undefined";
+const isLocalhost = isBrowser && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+
+const API_BASE = 
+  import.meta.env.VITE_API_URL || 
+  (isBrowser && !isLocalhost ? `${window.location.origin}/api` : "http://localhost:8000/api");
+
+const WS_BASE = 
+  import.meta.env.VITE_WS_URL || 
+  (isBrowser && !isLocalhost 
+    ? `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/ws/prices` 
+    : "ws://localhost:8000/ws/prices");
 
 export interface User {
   id: string;
