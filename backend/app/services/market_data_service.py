@@ -302,19 +302,33 @@ class MarketDataService:
 
     def _apply_micro_tick(self, quote: dict) -> dict:
         """Create a micro tick update for real-time paper trading feel."""
-        prev_price = quote["price"]
+        prev_price = self._last_tick_prices.get(quote["symbol"], quote["price"])
         is_forex = quote.get("market") == "forex"
-        step = 0.0002 if is_forex else (0.05 if quote["price"] < 100 else 0.5)
+        step = 0.0002 if is_forex else (0.05 if prev_price < 100 else 0.5)
         
-        delta = random.choice([-1, 0, 1]) * step
-        new_price = max(prev_price + delta, 0.0001)
+        # Non-zero jitter: +/- step so price visibly moves on every tick
+        direction = random.choice([-1, 1])
+        new_price = max(round(prev_price + direction * step, 4 if is_forex else 2), 0.0001)
+        self._last_tick_prices[quote["symbol"]] = new_price
+        
+        # Calculate fresh change and change_pct relative to base close
+        base_prev_close = quote["price"] - quote.get("change", 0.0)
+        if base_prev_close <= 0:
+            base_prev_close = quote["price"]
+        
+        new_change = round(new_price - base_prev_close, 4 if is_forex else 2)
+        new_pct = round((new_change / base_prev_close * 100), 2) if base_prev_close else 0.0
         
         quote_copy = quote.copy()
-        quote_copy["price"] = round(new_price, 4 if is_forex else 2)
+        quote_copy["price"] = new_price
+        quote_copy["change"] = new_change
+        quote_copy["change_pct"] = new_pct
+        quote_copy["high"] = max(quote.get("high", new_price), new_price)
+        quote_copy["low"] = min(quote.get("low", new_price), new_price)
         quote_copy["timestamp"] = int(time.time())
-        self._last_tick_prices[quote["symbol"]] = new_price
+        
         self._live_price_cache[quote["symbol"]] = {
-            "price": quote_copy["price"],
+            "price": new_price,
             "timestamp": time.time(),
             "data": quote_copy
         }

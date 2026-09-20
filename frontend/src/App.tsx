@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { api, User, Quote, NewsItem } from './services/api';
+import { api, User, NewsItem } from './services/api';
+import { PriceProvider, usePriceContext } from './context/PriceContext';
 import { Header } from './components/Header';
 import { LandingPage } from './pages/LandingPage';
 import { MarketSelectionPage } from './pages/MarketSelectionPage';
@@ -10,13 +11,13 @@ import { PriceAlertsModal } from './components/PriceAlertsModal';
 import { OnboardingTour } from './components/OnboardingTour';
 import { Bell, Check, AlertCircle } from 'lucide-react';
 
-export const App: React.FC = () => {
+const AppContent: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [activeView, setActiveView] = useState<'landing' | 'market_select' | 'workspace'>('landing');
   const [selectedMarket, setSelectedMarket] = useState<'nse' | 'forex' | 'commodities' | 'crypto'>('nse');
   
-  // Real-time market state
-  const [quotes, setQuotes] = useState<Record<string, Quote>>({});
+  // Real-time market state from PriceProvider
+  const { quotes, subscribeToNotifications } = usePriceContext();
   const [news, setNews] = useState<NewsItem[]>([]);
   const [combinedNetWorth, setCombinedNetWorth] = useState<{ total_inr: number; total_usd: number } | undefined>(undefined);
   const [portfolios, setPortfolios] = useState<Record<string, any>>({});
@@ -56,27 +57,16 @@ export const App: React.FC = () => {
     api.getNews().then(setNews).catch(console.error);
   }, []);
 
-  // 2. Setup WebSocket price streaming
+  // 2. Subscribe to WebSocket notification events (liquidations, triggers)
   useEffect(() => {
-    const ws = api.createWebSocket(
-      (newQuote) => {
-        setQuotes((prev) => ({
-          ...prev,
-          [newQuote.symbol]: newQuote,
-        }));
-      },
-      (events) => {
-        events.forEach((evt) => {
-          addToast(evt, evt.includes("LIQUIDATED") ? 'warning' : 'success');
-        });
-        refreshPortfolioData();
-      }
-    );
-
-    return () => {
-      ws.close();
-    };
-  }, []);
+    const unsubscribe = subscribeToNotifications((events) => {
+      events.forEach((evt) => {
+        addToast(evt, evt.includes("LIQUIDATED") ? 'warning' : 'success');
+      });
+      refreshPortfolioData();
+    });
+    return unsubscribe;
+  }, [subscribeToNotifications]);
 
   // Refresh user net worth and portfolios
   const refreshPortfolioData = async () => {
@@ -223,5 +213,14 @@ export const App: React.FC = () => {
   );
 };
 
+export const App: React.FC = () => {
+  return (
+    <PriceProvider>
+      <AppContent />
+    </PriceProvider>
+  );
+};
+
 export default App;
+
 

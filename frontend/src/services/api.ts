@@ -6,11 +6,23 @@ const API_BASE =
   import.meta.env.VITE_API_URL || 
   (isBrowser && !isLocalhost ? `${window.location.origin}/api` : "http://localhost:8000/api");
 
-const WS_BASE = 
-  import.meta.env.VITE_WS_URL || 
-  (isBrowser && !isLocalhost 
+function deriveWsUrl(): string {
+  if (import.meta.env.VITE_WS_URL) return import.meta.env.VITE_WS_URL;
+  if (import.meta.env.VITE_API_URL) {
+    try {
+      const url = new URL(import.meta.env.VITE_API_URL);
+      const protocol = url.protocol === "https:" ? "wss:" : "ws:";
+      return `${protocol}//${url.host}/ws/prices`;
+    } catch {
+      // Fallback
+    }
+  }
+  return isBrowser && !isLocalhost 
     ? `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/ws/prices` 
-    : "ws://localhost:8000/ws/prices");
+    : "ws://localhost:8000/ws/prices";
+}
+
+const WS_BASE = deriveWsUrl();
 
 export interface User {
   id: string;

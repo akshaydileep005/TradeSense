@@ -67,6 +67,9 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
   const supLineRef = useRef<IPriceLine | null>(null);
   const resLineRef = useRef<IPriceLine | null>(null);
 
+  // Refs for tracking real-time live bar updates
+  const currentCandleRef = useRef<CandlestickData | null>(null);
+
   // States
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showEMA, setShowEMA] = useState(true);
@@ -281,21 +284,75 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
       bbLowerRef.current.setData(showBollinger ? bbLowerData : []);
     }
 
-    // Update with live quote if available
-    if (quote && formattedCandles.length > 0) {
-      const lastCandle = formattedCandles[formattedCandles.length - 1];
-      const updatedLast: CandlestickData = {
-        time: lastCandle.time,
-        open: lastCandle.open,
-        high: Math.max(lastCandle.high, quote.price),
-        low: Math.min(lastCandle.low, quote.price),
-        close: quote.price,
-      };
-      candlestickSeriesRef.current.update(updatedLast);
+    // Save reference to rightmost candle for live tick updates
+    if (formattedCandles.length > 0) {
+      const last = formattedCandles[formattedCandles.length - 1];
+      currentCandleRef.current = { ...last };
     }
 
     chartRef.current?.timeScale().fitContent();
-  }, [candles, quote, showEMA, showBollinger]);
+  }, [candles, showEMA, showBollinger]);
+
+  // Real-time live tick update: calls series.update() on every tick without resetting chart or zoom
+  useEffect(() => {
+    if (!candlestickSeriesRef.current || !quote || !currentCandleRef.current) return;
+
+    // Helper for timeframe in seconds
+    const getTimeframeSeconds = (tf: string): number => {
+      switch (tf) {
+        case '1m': return 60;
+        case '5m': return 300;
+        case '15m': return 900;
+        case '1h': return 3600;
+        case '1D': return 86400;
+        default: return 900;
+      }
+    };
+
+    const quoteSec = quote.timestamp || Math.floor(Date.now() / 1000);
+    const intervalSec = getTimeframeSeconds(timeframe);
+    const currentBarTime = (Math.floor(quoteSec / intervalSec) * intervalSec) as UTCTimestamp;
+    const lastBarTime = currentCandleRef.current.time as number;
+
+    if (currentBarTime > lastBarTime) {
+      // Timeframe bucket has advanced: append brand-new real-time candle
+      const newCandle: CandlestickData = {
+        time: currentBarTime,
+        open: quote.price,
+        high: quote.price,
+        low: quote.price,
+        close: quote.price,
+      };
+      currentCandleRef.current = newCandle;
+      try {
+        candlestickSeriesRef.current.update(newCandle);
+        if (volumeSeriesRef.current) {
+          volumeSeriesRef.current.update({
+            time: currentBarTime,
+            value: quote.volume || 100,
+            color: 'rgba(0, 230, 118, 0.25)',
+          });
+        }
+      } catch (err) {
+        console.warn('[TradingViewChart] Live candle append warning:', err);
+      }
+    } else {
+      // Within the same candle: update high, low, close in place
+      const updatedCandle: CandlestickData = {
+        time: currentCandleRef.current.time,
+        open: currentCandleRef.current.open,
+        high: Math.max(currentCandleRef.current.high, quote.price),
+        low: Math.min(currentCandleRef.current.low, quote.price),
+        close: quote.price,
+      };
+      currentCandleRef.current = updatedCandle;
+      try {
+        candlestickSeriesRef.current.update(updatedCandle);
+      } catch (err) {
+        console.warn('[TradingViewChart] Live candle update warning:', err);
+      }
+    }
+  }, [quote, timeframe]);
 
   // Update Doji overlays (Price Lines & Markers)
   useEffect(() => {
